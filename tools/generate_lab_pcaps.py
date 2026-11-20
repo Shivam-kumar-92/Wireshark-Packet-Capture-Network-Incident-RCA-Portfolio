@@ -397,8 +397,7 @@ def build_tls_server_flight(server_name: str) -> bytes:
         + bytes([len(session_id)])
         + session_id
         + struct.pack("!H", 0xC02F)      # Selected: TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
-        + b"\x00"                        # Compression: null
-        + struct.pack("!H", 0)           # No extensions
+        + b"\x00"                        # Compression: null (no empty extensions block per RFC 5246)
     )
     rec_sh = tls_record(0x16, 0x0303, tls_handshake_msg(0x02, sh_body))
 
@@ -407,8 +406,21 @@ def build_tls_server_flight(server_name: str) -> bytes:
     cert_list = len(cert_entry).to_bytes(3, "big") + cert_entry
     rec_cert = tls_record(0x16, 0x0303, tls_handshake_msg(0x0B, cert_list))
 
+    # RFC 8422 ServerKeyExchange (named_curve = x25519 0x001d + 32B pubkey + rsa_pkcs1_sha256 sig)
+    server_ecdh_pub = hashlib.sha256(b"server-x25519-pubkey").digest()
+    ecdh_params = struct.pack("!BHB", 3, 0x001D, len(server_ecdh_pub)) + server_ecdh_pub
+    ske_sig = hashlib.sha256(ecdh_params).digest() * 4  # 128-byte RSA-1024 signature
+    ske_body = ecdh_params + struct.pack("!HH", 0x0401, len(ske_sig)) + ske_sig
+    rec_ske = tls_record(0x16, 0x0303, tls_handshake_msg(0x0C, ske_body))
+
     rec_done = tls_record(0x16, 0x0303, tls_handshake_msg(0x0E, b""))
-    return rec_sh + rec_cert + rec_done
+    return rec_sh + rec_cert + rec_ske + rec_done
+
+
+def build_tls_client_key_exchange() -> bytes:
+    client_ecdh_pub = hashlib.sha256(b"client-x25519-pubkey").digest()
+    cke_body = bytes([len(client_ecdh_pub)]) + client_ecdh_pub
+    return tls_record(0x16, 0x0303, tls_handshake_msg(0x10, cke_body))
 
 
 # ---------------------------------------------------------------------------
@@ -553,8 +565,12 @@ def generate_incident_03_http_vs_https(out_path: Path) -> int:
     add_tcp(1.042, GW_MAC, CLIENT_MAC, WEB_SERVER_IP, CLIENT_IP, 443, 55201, s_seq, c_seq, TCP_PSH | TCP_ACK, sf)
     s_seq += len(sf)
 
-    # Client ChangeCipherSpec + Encrypted Handshake Message (Finished)
-    c_ccs = tls_record(0x14, 0x0303, b"\x01") + tls_record(0x16, 0x0303, hashlib.sha256(b"client-finished-enc").digest() + b"\x00" * 8)
+    # Client ClientKeyExchange + ChangeCipherSpec + Encrypted Handshake Message (Finished)
+    c_ccs = (
+        build_tls_client_key_exchange()
+        + tls_record(0x14, 0x0303, b"\x01")
+        + tls_record(0x16, 0x0303, hashlib.sha256(b"client-finished-enc").digest() + b"\x00" * 8)
+    )
     add_tcp(1.050, CLIENT_MAC, GW_MAC, CLIENT_IP, WEB_SERVER_IP, 55201, 443, c_seq, s_seq, TCP_PSH | TCP_ACK, c_ccs)
     c_seq += len(c_ccs)
 

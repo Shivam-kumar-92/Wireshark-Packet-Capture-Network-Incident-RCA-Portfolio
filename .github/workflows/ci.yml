@@ -41,7 +41,8 @@ jobs:
             malformed=$(tshark -r "$f" -Y "_ws.malformed" | wc -l)
             echo "Malformed frame count in $f: $malformed"
             if [ "$malformed" -ne 0 ]; then
-              echo "ERROR: Malformed frames detected in $f!"
+              echo "ERROR: Malformed frames detected in $f:"
+              tshark -r "$f" -Y "_ws.malformed" -V
               exit 1
             fi
           done
