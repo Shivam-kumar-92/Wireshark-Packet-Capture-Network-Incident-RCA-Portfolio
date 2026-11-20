@@ -1,5 +1,6 @@
 # Wireshark Packet Capture & Network Incident RCA Portfolio
 
+[![Verify PCAPs & RCA Suite](https://github.com/Shivam-kumar-92/Wireshark-Packet-Capture-Network-Incident-RCA-Portfolio/actions/workflows/ci.yml/badge.svg)](https://github.com/Shivam-kumar-92/Wireshark-Packet-Capture-Network-Incident-RCA-Portfolio/actions/workflows/ci.yml)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
 ![Wireshark Validated](https://img.shields.io/badge/Wireshark%20%2F%20tshark-PCAP%20Validated-1679A7)
 ![OSI Layers](https://img.shields.io/badge/OSI%20Layers-L2%20%7C%20L3%20%7C%20L4%20%7C%20L7-brightgreen)
