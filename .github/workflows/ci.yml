@@ -34,6 +34,7 @@ jobs:
 
       - name: Verify every PCAP decodes in tshark with ZERO malformed frames
         run: |
+          set +e
           failed=0
           for f in pcaps/*.pcap; do
             echo "=== tshark summary: $f ==="
