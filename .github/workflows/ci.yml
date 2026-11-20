@@ -35,17 +35,18 @@ jobs:
       - name: Verify every PCAP decodes in tshark with ZERO malformed frames
         run: |
           set -euo pipefail
+          failed=0
           for f in pcaps/*.pcap; do
             echo "=== tshark summary: $f ==="
             tshark -r "$f"
-            malformed=$(tshark -r "$f" -Y "_ws.malformed" | wc -l)
-            echo "Malformed frame count in $f: $malformed"
-            if [ "$malformed" -ne 0 ]; then
-              echo "ERROR: Malformed frames detected in $f:"
-              tshark -r "$f" -Y "_ws.malformed" -V
-              exit 1
+            out=$(tshark -r "$f" -Y "_ws.malformed" 2>&1 || true)
+            if [ -n "$out" ]; then
+              echo "::error::Malformed frames in ${f}: ${out}"
+              tshark -r "$f" -Y "_ws.malformed" -V || true
+              failed=1
             fi
           done
+          exit $failed
 
       - name: Assert Wireshark dissectors detect all 4 incident signatures
         run: |
