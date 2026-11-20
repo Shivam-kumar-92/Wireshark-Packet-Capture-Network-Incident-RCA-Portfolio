@@ -1,0 +1,60 @@
+name: Verify PCAPs & RCA Suite
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  verify:
+    name: Validate PCAPs with Python & Wireshark tshark
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install Wireshark tshark
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y tshark
+
+      - name: Run Python forensic unit tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Run CLI forensic report across all captures
+        run: python tools/analyze_pcap.py
+
+      - name: Verify every PCAP decodes in tshark with ZERO malformed frames
+        run: |
+          set -euo pipefail
+          for f in pcaps/*.pcap; do
+            echo "=== tshark summary: $f ==="
+            tshark -r "$f"
+            malformed=$(tshark -r "$f" -Y "_ws.malformed" | wc -l)
+            echo "Malformed frame count in $f: $malformed"
+            if [ "$malformed" -ne 0 ]; then
+              echo "ERROR: Malformed frames detected in $f!"
+              exit 1
+            fi
+          done
+
+      - name: Assert Wireshark dissectors detect all 4 incident signatures
+        run: |
+          set -euo pipefail
+          test "$(tshark -r pcaps/01_dns_resolution_failure.pcap -Y 'dns.flags.rcode == 3' | wc -l)" -ge 1
+          test "$(tshark -r pcaps/01_dns_resolution_failure.pcap -Y 'dns.flags.rcode == 2' | wc -l)" -ge 1
+          test "$(tshark -r pcaps/02_tcp_syn_timeout_firewall_drop.pcap -Y 'tcp.analysis.retransmission' | wc -l)" -ge 5
+          test "$(tshark -r pcaps/02_tcp_syn_timeout_firewall_drop.pcap -Y 'tcp.flags.reset == 1' | wc -l)" -ge 1
+          test "$(tshark -r pcaps/03_http_vs_https_tls_handshake.pcap -Y 'http.authorization' | wc -l)" -ge 1
+          test "$(tshark -r pcaps/03_http_vs_https_tls_handshake.pcap -Y 'tls.handshake.extensions_server_name == "secure-portal.corp.example"' | wc -l)" -ge 1
+          test "$(tshark -r pcaps/03_http_vs_https_tls_handshake.pcap -Y 'tls.handshake.certificate' | wc -l)" -ge 1
+          test "$(tshark -r pcaps/04_arp_spoofing_duplicate_ip.pcap -Y 'arp.duplicate-address-detected' | wc -l)" -ge 1
+          echo "All 4 incident signatures verified by Wireshark tshark!"
