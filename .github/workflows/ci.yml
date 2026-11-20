@@ -34,14 +34,20 @@ jobs:
 
       - name: Verify every PCAP decodes in tshark with ZERO malformed frames
         run: |
-          set -euo pipefail
           failed=0
           for f in pcaps/*.pcap; do
             echo "=== tshark summary: $f ==="
-            tshark -r "$f"
-            out=$(tshark -r "$f" -Y "_ws.malformed" 2>&1 || true)
-            if [ -n "$out" ]; then
-              echo "::error::Malformed frames in ${f}: ${out}"
+            summary=$(tshark -r "$f" 2>&1)
+            rc=$?
+            echo "$summary"
+            if [ "$rc" -ne 0 ]; then
+              echo "::error::tshark -r ${f} failed (rc=${rc}): $(echo "$summary" | tr '\n' ' ')"
+              failed=1
+              continue
+            fi
+            malformed=$(tshark -r "$f" -Y "_ws.malformed" 2>&1)
+            if [ -n "$malformed" ]; then
+              echo "::error::Malformed frames in ${f}: $(echo "$malformed" | tr '\n' ' ')"
               tshark -r "$f" -Y "_ws.malformed" -V || true
               failed=1
             fi
